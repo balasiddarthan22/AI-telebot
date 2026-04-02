@@ -1,7 +1,7 @@
 import { Bot, Context } from "grammy";
 import { ConvexClient } from "convex/browser";
 import { api } from "../../convex/_generated/api";
-import { createOAuth2Client, getAuthUrl } from "../services/calendar";
+import { createOAuth2Client, getAuthUrl, listUpcomingEvents, deleteEvent } from "../services/calendar";
 
 export function registerCommands(bot: Bot, convex: ConvexClient) {
   bot.command("start", async (ctx) => {
@@ -88,17 +88,58 @@ export function registerCommands(bot: Bot, convex: ConvexClient) {
     }
   });
 
+  bot.command("delete", async (ctx) => {
+    const user = ctx.from;
+    if (!user) return;
+
+    const query = ctx.match?.trim().toLowerCase();
+    if (!query) {
+      await ctx.reply("Usage: /delete <event name>\nExample: /delete team standup");
+      return;
+    }
+
+    const tokens = await convex.query(api.users.getUserTokens, { telegramId: user.id });
+    if (!tokens?.accessToken) {
+      await ctx.reply("Connect your Google Calendar first with /connect.");
+      return;
+    }
+
+    const oauth2Client = createOAuth2Client();
+    oauth2Client.setCredentials({
+      access_token: tokens.accessToken,
+      refresh_token: tokens.refreshToken,
+      expiry_date: tokens.expiryDate,
+    });
+
+    const events = await listUpcomingEvents(oauth2Client, 50);
+    const match = events.find((e) => e.title.toLowerCase().includes(query));
+
+    if (!match) {
+      await ctx.reply(`No upcoming event found matching "${query}".`);
+      return;
+    }
+
+    if (!match.id) {
+      await ctx.reply("That event can't be deleted (no ID found).");
+      return;
+    }
+
+    await deleteEvent(oauth2Client, match.id);
+    await ctx.reply(`Deleted "${match.title}".`);
+  });
+
   bot.command("help", async (ctx) => {
     await ctx.reply(
-      `Calendar AI Bot — Commands:\n\n` +
-        `/start — Register and see welcome message\n` +
-        `/connect — Link your Google Calendar\n` +
+      `Commands:\n\n` +
+        `/start — Register\n` +
+        `/connect — Link Google Calendar\n` +
         `/events — List upcoming events\n` +
+        `/delete <name> — Delete an event\n` +
         `/help — Show this message\n\n` +
-        `Natural language examples:\n` +
+        `Or just chat naturally:\n` +
         `• "Add team standup tomorrow at 9am for 30 minutes"\n` +
         `• "What's on my calendar this week?"\n` +
-        `• "When are we all free on Friday?"`
+        `• "When am I free on Friday?"`
     );
   });
 }
