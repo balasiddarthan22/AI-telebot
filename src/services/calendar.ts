@@ -28,13 +28,16 @@ export interface CalendarEvent {
 
 export async function listUpcomingEvents(
   oauth2Client: OAuth2Client,
-  maxResults = 10
+  maxResults = 10,
+  timeMin?: Date,
+  timeMax?: Date
 ): Promise<CalendarEvent[]> {
   const calendar = google.calendar({ version: "v3", auth: oauth2Client });
 
   const res = await calendar.events.list({
     calendarId: "primary",
-    timeMin: new Date().toISOString(),
+    timeMin: (timeMin ?? new Date()).toISOString(),
+    timeMax: timeMax?.toISOString(),
     maxResults,
     singleEvents: true,
     orderBy: "startTime",
@@ -74,6 +77,23 @@ export async function deleteEvent(
 ): Promise<void> {
   const calendar = google.calendar({ version: "v3", auth: oauth2Client });
   await calendar.events.delete({ calendarId: "primary", eventId });
+}
+
+export async function updateEvent(
+  oauth2Client: OAuth2Client,
+  eventId: string,
+  newStart: Date,
+  newEnd: Date
+): Promise<void> {
+  const calendar = google.calendar({ version: "v3", auth: oauth2Client });
+  await calendar.events.patch({
+    calendarId: "primary",
+    eventId,
+    requestBody: {
+      start: { dateTime: newStart.toISOString() },
+      end: { dateTime: newEnd.toISOString() },
+    },
+  });
 }
 
 export async function getFreeBusy(
